@@ -12,7 +12,7 @@ el usuario completa los datos del accidente y se visualizan la predicción y los
 
 | Archivo | Descripción |
 |---|---|
-| `index.html` | Página (formulario, predicción y resultados). No necesita instalar nada. |
+| `index.html` | Página (formulario, predicción y resultados). |
 | `exportar_modelo.py` | Celda para pegar en el Colab; genera `modelo.json`. |
 | `modelo.json` | **Se genera desde el Colab** (pesos de la red, escalado, categorías y métricas). |
 
