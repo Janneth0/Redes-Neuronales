@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Predicción del tipo de baja · Grupo 10</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+
+<body>
+  <header>
+    <h1>Predicción del tipo de baja en accidentes laborales</h1>
+    <p class="s">Red neuronal (Perceptrón Multicapa) aplicada a la construcción en Argentina · <span
+        class="grupo-tooltip">Grupo 10
+        <span class="tooltip-text">Hernan Fahoto<br>Julieta Cortinez<br>Fernanda Roman<br>Elian Lewicki<br>Janneth Chura</span>
+      </span></p>
+  </header>
+  <main>
+    <nav>
+      <button id="t1" class="on">Predicción</button>
+      <button id="t2">Resultados del modelo</button>
+    </nav>
+    <p id="msg" class="err"></p>
+
+    <section id="p1" class="g">
+      <div class="card">
+        <div id="campos"></div><button class="btn" id="go">Predecir</button>
+      </div>
+      <div class="card" id="salida">
+        <p class="s">Completá los datos y presioná <b>Predecir</b>.</p>
+      </div>
+    </section>
+
+    <section id="p2" class="hide">
+      <div class="card kpi" id="kpi"></div>
+      <h2>Evolución del entrenamiento</h2>
+      <div class="g">
+        <div class="card"><canvas id="c1"></canvas></div>
+        <div class="card"><canvas id="c2"></canvas></div>
+      </div>
+      <h2>Matriz de confusión</h2>
+      <div class="card" id="matriz"></div>
+      <h2>Reporte de clasificación</h2>
+      <div class="card" id="reporte"></div>
+    </section>
+  </main>
+  <footer>
+    Modelo entrenado en
+    <a href="https://colab.research.google.com/drive/1C41fLcTi_E_1Xaw_sCTbl-IOCqJwzUxE?usp=sharing" target="_blank"
+      rel="noopener">Google Colab</a>.
+    La predicción es orientativa.
+  </footer>
+
+  <script>
+    const ET = {
+      ano_notificacion: "Año de notificación", edad_trabajador: "Edad del trabajador", provincia: "Provincia",
+      rama_actividad: "Rama de actividad", tipo_siniestro: "Tipo de siniestro", tipo_lesion: "Tipo de lesión", tamano_empresa: "Tamaño de la empresa"
+    };
+    const nom = c => ET[c] || c.replace(/_/g, " ");
+    const $ = id => document.getElementById(id);
+    let M;
+
+    fetch("modelo.json").then(r => { if (!r.ok) throw 0; return r.json() }).then(d => { M = d; iniciar() })
+      .catch(() => { $("msg").textContent = "No se encontró modelo.json. Exportalo desde el Colab (ver README) y subilo junto a index.html." });
+
+    function iniciar() {
+      let h = "";
+      M.numericas.forEach(c => {
+        const [mn, mx, md] = M.rangos[c];
+        h += `<label>${nom(c)}</label><input type="number" id="f_${c}" min="${mn}" max="${mx}" step="1" value="${Math.round(md)}">`
+      });
+      M.categoricas.forEach((c, i) => {
+        h += `<label>${nom(c)}</label><select id="f_${c}">` + M.categorias[i].map(v => `<option>${v}</option>`).join("") + `</select>`
+      });
+      $("campos").innerHTML = h;
+      $("go").onclick = mostrar;
+      resultados();
+    }
+
+    function predecir(v) {
+      const x = [];
+      M.numericas.forEach((c, i) => x.push((Number(v[c]) - M.media[i]) / M.escala[i]));
+      M.categoricas.forEach((c, i) => M.categorias[i].forEach(k => x.push(v[c] === k ? 1 : 0)));
+      const h = M.b1.map((b, j) => { let s = b; for (let i = 0; i < x.length; i++)s += x[i] * M.W1[i][j]; return Math.max(0, s) });
+      const z = M.b2.map((b, k) => { let s = b; for (let j = 0; j < h.length; j++)s += h[j] * M.W2[j][k]; return s });
+      const m = Math.max(...z), e = z.map(a => Math.exp(a - m)), t = e.reduce((a, b) => a + b, 0);
+      return e.map(a => a / t);
+    }
+
+    function mostrar() {
+      const v = {};[...M.numericas, ...M.categoricas].forEach(c => v[c] = $("f_" + c).value);
+      const p = predecir(v), k = p.indexOf(Math.max(...p));
+      $("salida").innerHTML = `<p class="s">Categoría de baja predicha</p><p class="res">${M.clases[k]}</p>
+  <p class="s">Probabilidad: ${(p[k] * 100).toFixed(1)}%</p>` +
+        M.clases.map((c, i) => `<div class="bar"><div><span>${c}</span><span>${(p[i] * 100).toFixed(1)}%</span></div><i><b style="width:${p[i] * 100}%"></b></i></div>`).join("") +
+        `<p class="s">El modelo tiene una precisión de ${(M.metricas.accuracy * 100).toFixed(2)}% en prueba; la predicción es orientativa.</p>`;
+    }
+
+    function linea(id, titulo, a, b, la, lb) {
+      const cv = $(id), r = devicePixelRatio || 1, W = cv.width = cv.clientWidth * r, H = cv.height = cv.clientHeight * r, x = cv.getContext("2d");
+      x.scale(r, r); const w = W / r, h = H / r, all = a.concat(b), mn = Math.min(...all), mx = Math.max(...all), P = 34;
+      x.font = "12px system-ui"; x.fillStyle = "#1d2521"; x.fillText(titulo, P, 14);
+      x.strokeStyle = "#dbe3de"; x.beginPath(); x.moveTo(P, 24); x.lineTo(P, h - 22); x.lineTo(w - 8, h - 22); x.stroke();
+      x.fillStyle = "#66736c"; x.fillText(mx.toFixed(2), 0, 32); x.fillText(mn.toFixed(2), 0, h - 24); x.fillText("épocas", w - 50, h - 6);
+      [[a, "#1f7a4d", la], [b, "#d97706", lb]].forEach(([d, col, l], j) => {
+        x.strokeStyle = col; x.lineWidth = 2; x.beginPath();
+        d.forEach((v, i) => { const px = P + i * (w - P - 8) / Math.max(d.length - 1, 1), py = h - 22 - (v - mn) / (mx - mn || 1) * (h - 50); i ? x.lineTo(px, py) : x.moveTo(px, py) });
+        x.stroke(); x.fillStyle = col; x.fillText(l, w - 140 + j * 0, 14 + j * 14);
+      });
+    }
+
+    function resultados() {
+      const m = M.metricas;
+      $("kpi").innerHTML = `<div><span class="s">Precisión en prueba</span><strong>${(m.accuracy * 100).toFixed(2)}%</strong></div>
+  <div><span class="s">Pérdida en prueba</span><strong>${m.loss.toFixed(4)}</strong></div>
+  <div><span class="s">Random Forest (TP anterior)</span><strong>${(m.random_forest * 100).toFixed(2)}%</strong></div>`;
+      const H = M.historial;
+      window.dib = () => {
+        linea("c1", "Pérdida", H.loss, H.val_loss, "Entrenamiento", "Validación");
+        linea("c2", "Precisión", H.accuracy, H.val_accuracy, "Entrenamiento", "Validación")
+      };
+      let t = "<table><tr><th>Real \\ Predicha</th>" + M.clases.map(c => `<th>${c}</th>`).join("") + "</tr>";
+      M.matriz.forEach((f, i) => {
+        const mx = Math.max(...f, 1);
+        t += `<tr><th>${M.clases[i]}</th>` + f.map(v => `<td style="background:rgba(31,122,77,${(v / mx * 0.6).toFixed(2)})">${v}</td>`).join("") + "</tr>"
+      });
+      $("matriz").innerHTML = t + "</table>";
+      let r = "<table><tr><th>Categoría</th><th>Precisión</th><th>Sensibilidad</th><th>F1</th><th>Registros</th></tr>";
+      Object.entries(M.reporte).forEach(([k, v]) => { r += `<tr><th>${k}</th><td>${v.precision.toFixed(2)}</td><td>${v.recall.toFixed(2)}</td><td>${v["f1-score"].toFixed(2)}</td><td>${v.support}</td></tr>` });
+      $("reporte").innerHTML = r + "</table>";
+    }
+
+    function tab(n) {
+      $("p1").classList.toggle("hide", n !== 1); $("p2").classList.toggle("hide", n !== 2);
+      $("t1").classList.toggle("on", n === 1); $("t2").classList.toggle("on", n === 2);
+      if (n === 2 && M) window.dib();
+    }
+    $("t1").onclick = () => tab(1); $("t2").onclick = () => tab(2);
+  </script>
+</body>
+
+</html>
